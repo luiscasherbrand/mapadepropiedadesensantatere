@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mapa Inmobiliario - Santa Teresita y Colonias Aledañas</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    /* Custom Scrollbar for Sidebar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    /* Custom Map Tooltip Label for Colonias */
+    .colonia-label {
+      background: rgba(239, 68, 68, 0.9) !important;
+      border: 1px solid #b91c1c !important;
+      color: white !important;
+      font-weight: 700 !important;
+      font-size: 11px !important;
+      padding: 3px 8px !important;
+      border-radius: 12px !important;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+      white-space: nowrap !important;
+    }
+    .colonia-label::before {
+      display: none !important;
+    }
+
+    /* Custom Leaflet Popup Styling */
+    .leaflet-popup-content-wrapper {
+      padding: 0;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    }
+    .leaflet-popup-content {
+      margin: 0 !important;
+      width: 280px !important;
+    }
+    .leaflet-container a.leaflet-popup-close-button {
+      color: #ffffff;
+      padding: 6px 8px 0 0;
+      z-index: 10;
+    }
+
+    /* Marker Pulse Effect */
+    .marker-pin {
+      width: 32px;
+      height: 32px;
+      border-radius: 50% 50% 50% 0;
+      position: absolute;
+      transform: rotate(-45deg);
+      left: 50%;
+      top: 50%;
+      margin: -20px 0 0 -16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .marker-pin:hover {
+      transform: rotate(-45deg) scale(1.15);
+    }
+    .marker-pin i {
+      transform: rotate(45deg);
+      color: white;
+      font-size: 14px;
+    }
+
+    /* Pulse animation around pins */
+    .pulse-bg {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background: rgba(239, 68, 68, 0.4);
+      border-radius: 50%;
+      transform: scale(1);
+      animation: pulse 2s infinite;
+      top: 10px;
+      left: 6px;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      70% { transform: scale(2); opacity: 0; }
+      100% { transform: scale(0.95); opacity: 0; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 font-sans text-slate-800 antialiased h-screen flex flex-col md:flex-row overflow-hidden">
+
+  <!-- Mobile Header -->
+  <div class="md:hidden bg-slate-900 text-white p-4 flex justify-between items-center z-20 shadow-md">
+    <div class="flex items-center space-x-2">
+      <i class="fa-solid fa-map-location-dot text-red-500 text-xl"></i>
+      <h1 class="font-bold text-lg leading-tight">Inmuebles Santa Tere</h1>
+    </div>
+    <button id="toggle-sidebar-btn" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition flex items-center gap-1">
+      <i class="fa-solid fa-bars"></i>
+      <span>Lista</span>
+    </button>
+  </div>
+
+  <!-- Sidebar Panel -->
+  <aside id="sidebar" class="w-full md:w-96 bg-white flex flex-col border-r border-slate-200 z-10 h-full overflow-hidden transition-all duration-300 absolute md:relative inset-0 hidden md:flex">
+    
+    <!-- Sidebar Header -->
+    <div class="p-4 bg-slate-900 text-white flex-shrink-0">
+      <div class="flex justify-between items-center mb-2">
+        <div class="flex items-center space-x-2">
+          <i class="fa-solid fa-building-circle-check text-red-500 text-2xl"></i>
+          <div>
+            <h2 class="font-bold text-lg leading-none">Santa Teresita</h2>
+            <p class="text-xs text-slate-400 mt-1">Guadalajara, Jalisco</p>
+          </div>
+        </div>
+        <button id="close-sidebar-btn" class="md:hidden text-slate-400 hover:text-white">
+          <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+      </div>
+
+      <!-- Quick Market Summary -->
+      <div class="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-800 text-xs">
+        <div class="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700">
+          <span class="text-slate-400 block mb-0.5">Precio Prom. m²</span>
+          <span class="font-bold text-emerald-400 text-sm" id="avg-price-m2">$57,510/m²</span>
+        </div>
+        <div class="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700">
+          <span class="text-slate-400 block mb-0.5">Propiedades</span>
+          <span class="font-bold text-white text-sm" id="total-props">6 Propiedades</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filters Bar -->
+    <div class="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2 flex-shrink-0">
+      <div class="flex items-center space-x-1 overflow-x-auto w-full py-1 text-xs">
+        <button class="filter-btn active px-3 py-1.5 rounded-full bg-slate-900 text-white font-medium shadow-sm transition whitespace-nowrap" data-filter="all">
+          Todos (6)
+        </button>
+        <button class="filter-btn px-3 py-1.5 rounded-full bg-slate-200 text-slate-700 hover:bg-slate-300 font-medium transition whitespace-nowrap" data-filter="nuevo">
+          Nuevos (4)
+        </button>
+        <button class="filter-btn px-3 py-1.5 rounded-full bg-slate-200 text-slate-700 hover:bg-slate-300 font-medium transition whitespace-nowrap" data-filter="usado">
+          Usados (2)
+        </button>
+      </div>
+    </div>
+
+    <!-- Properties List -->
+    <div id="properties-list" class="flex-1 overflow-y-auto p-3 space-y-3">
+      <!-- Generated via JS -->
+    </div>
+
+    <!-- Sidebar Footer -->
+    <div class="p-3 bg-slate-50 border-t border-slate-200 text-center text-xs text-slate-500 flex-shrink-0">
+      <div class="flex items-center justify-center gap-2 mb-1">
+        <span class="inline-block w-3 h-0.5 bg-red-600"></span>
+        <span class="font-semibold text-slate-700">Líneas rojas: Delimitación de Colonias</span>
+      </div>
+      <p>Guadalajara, Jal. | Fuente: Inmuebles24</p>
+    </div>
+  </aside>
+
+  <!-- Map Container -->
+  <main class="flex-1 h-full w-full relative">
+    <div id="map" class="h-full w-full bg-slate-200"></div>
+
+    <!-- Map Legend Badge -->
+    <div class="absolute bottom-6 right-6 bg-white/95 backdrop-blur-md px-4 py-3 rounded-xl shadow-lg border border-slate-200 z-[1000] hidden sm:block max-w-xs text-xs">
+      <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+        <i class="fa-solid fa-map text-red-600"></i> Simbología de Colonias
+      </h4>
+      <div class="space-y-1.5">
+        <div class="flex items-center gap-2">
+          <span class="w-4 h-1 bg-red-600 rounded-full inline-block"></span>
+          <span class="text-slate-600">Límite Territorial Colonia</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-emerald-600 inline-block"></span>
+          <span class="text-slate-600">Desarrollo / Depto Nuevo</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-amber-600 inline-block"></span>
+          <span class="text-slate-600">Departamento Usado</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // --- DATA SET: 6 PROPERTIES ---
+    const properties = [
+      {
+        id: 1,
+        title: "Ememvein Greda Lofts",
+        status: "nuevo",
+        area: 41,
+        price: 1970000,
+        priceM2: 48049,
+        address: "Gregorio Dávila 786, Barrio Santa Teresita, Guadalajara",
+        colonia: "Santa Teresita",
+        coords: [20.6865, -103.3615],
+        url: "https://www.inmuebles24.com/propiedades/desarrollo/ememvein-greda-lofts.-151405246.html?n_src=Listado&n_pg=1&n_pos=1&n_search_id=6c5405b3-f38a-4c4f-a822-04387f03df75",
+        badge: "Greda Lofts"
+      },
+      {
+        id: 2,
+        title: "Casa Yoko - Villaseñor",
+        status: "nuevo",
+        area: 36,
+        price: 2142564,
+        priceM2: 59516,
+        address: "Jesús García 1774, Villaseñor / Santa Tere, Guadalajara",
+        colonia: "Villaseñor",
+        coords: [20.6908, -103.3650],
+        url: "https://www.inmuebles24.com/propiedades/clasificado/veclapin-departamentos-lofts-en-venta-casa-yoko-villasenor-149613832.html?n_src=Listado&n_pg=1&n_pos=4&n_search_id=6c5405b3-f38a-4c4f-a822-04387f03df75",
+        badge: "Casa Yoko"
+      },
+      {
+        id: 3,
+        title: "Depto Inversión Santa Tere",
+        status: "nuevo",
+        area: 42,
+        price: 2935000,
+        priceM2: 69881,
+        address: "Calle Hospital 1669, Col. Santa Teresita, Guadalajara, Jalisco",
+        colonia: "Santa Teresita",
+        coords: [20.6852, -103.3638],
+        url: "https://www.inmuebles24.com/propiedades/clasificado/veclapin-santa-teresita-excelente-opcion-para-invertir-o-vivir-150672115.html?n_src=Listado&n_pg=1&n_pos=5&n_search_id=6c5405b3-f38a-4c4f-a822-04387f03df75",
+        badge: "Hospital 1669"
+      },
+      {
+        id: 4,
+        title: "Depto Nicolás Romero (47 m²)",
+        status: "usado",
+        area: 47,
+        price: 2585000,
+        priceM2: 55000,
+        address: "Calle Nicolás Romero 428, Barrio Santa Teresita, Guadalajara",
+        colonia: "Santa Teresita",
+        coords: [20.6831, -103.3622],
+        url: "https://www.inmuebles24.com/propiedades/clasificado/veclapin-departamento-en-venta-en-santa-teresita-nicolas-150659835.html?n_src=Listado&n_pg=1&n_pos=3&n_search_id=a8395654-81ba-496f-9b8b-3f07d382b5d6",
+        badge: "Nicolás Romero 428"
+      },
+      {
+        id: 5,
+        title: "Depto Amplio Nicolás Romero",
+        status: "usado",
+        area: 79,
+        price: 3880000,
+        priceM2: 49114,
+        address: "Nicolás Romero 428, Barrio Santa Teresita, Guadalajara",
+        colonia: "Santa Teresita",
+        coords: [20.6828, -103.3620],
+        url: "https://www.inmuebles24.com/propiedades/clasificado/veclapin-santa-tere-departamento-venta-79-m-sup2--91265762.html?n_src=Listado&n_pg=1&n_pos=10&n_search_id=a8395654-81ba-496f-9b8b-3f07d382b5d6",
+        badge: "79m² Especial"
+      },
+      {
+        id: 6,
+        title: "Desarrollo Andanza",
+        status: "nuevo",
+        area: 44.54,
+        price: 2828290,
+        priceM2: 63500,
+        address: "Calle General Eulogio Parra 1676, Col. Santa Tere, Guadalajara",
+        colonia: "Santa Teresita",
+        coords: [20.6888, -103.3639],
+        url: "https://www.inmuebles24.com",
+        badge: "Andanza"
+      }
+    ];
+
+    // --- NEIGHBORHOOD POLYGONS (COLONIAS) ---
+    // Defined boundaries surrounding Santa Teresita & nearby colonias
+    const coloniasData = [
+      {
+        name: "Santa Teresita (Santa Tere)",
+        center: [20.6850, -103.3625],
+        coords: [
+          [20.6895, -103.3670],
+          [20.6895, -103.3585],
+          [20.6810, -103.3585],
+          [20.6810, -103.3670]
+        ]
+      },
+      {
+        name: "Colonia Villaseñor",
+        center: [20.6930, -103.3640],
+        coords: [
+          [20.6965, -103.3680],
+          [20.6965, -103.3585],
+          [20.6895, -103.3585],
+          [20.6895, -103.3680]
+        ]
+      },
+      {
+        name: "Ladrón de Guevara",
+        center: [20.6850, -103.3730],
+        coords: [
+          [20.6920, -103.3780],
+          [20.6920, -103.3670],
+          [20.6810, -103.3670],
+          [20.6810, -103.3780]
+        ]
+      },
+      {
+        name: "Capilla de Jesús",
+        center: [20.6820, -103.3540],
+        coords: [
+          [20.6895, -103.3585],
+          [20.6895, -103.3500],
+          [20.6780, -103.3500],
+          [20.6780, -103.3585]
+        ]
+      },
+      {
+        name: "Colonia Americana / Mezquitán",
+        center: [20.6765, -103.3625],
+        coords: [
+          [20.6810, -103.3670],
+          [20.6810, -103.3585],
+          [20.6730, -103.3585],
+          [20.6730, -103.3670]
+        ]
+      }
+    ];
+
+    // Format currency helper
+    const formatMXN = (val) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(val);
+
+    // Global variables
+    let map;
+    let markersMap = {};
+    let currentFilter = 'all';
+
+    // Initialize Map on window load
+    window.onload = function() {
+      initMap();
+      renderSidebarList(properties);
+      setupEventListeners();
+    };
+
+    function initMap() {
+      // Map centered on Santa Teresita
+      map = L.map('map', {
+        zoomControl: false
+      }).setView([20.6858, -103.3630], 15);
+
+      // Custom Zoom control position
+      L.control.zoom({ position: 'topright' }).addTo(map);
+
+      // Esri World Street Map - 100% Gratuito y sin restricciones de User-Agent o API key en iFrames
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012',
+        maxZoom: 19
+      }).addTo(map);
+
+      // --- 1. DRAW COLONIAS (RED BORDER LINES / FRANJA ROJA) ---
+      coloniasData.forEach(colonia => {
+        // Red polygon border
+        const polygon = L.polygon(colonia.coords, {
+          color: '#dc2626',       // Vivid Red Border
+          weight: 3.5,            // Red Franja Thickness
+          dashArray: '6, 6',      // Elegant dashed border line
+          fillColor: '#ef4444',   // Light red fill
+          fillOpacity: 0.07
+        }).addTo(map);
+
+        // Add Permanent Floating Label on Map for Neighborhood Name
+        const labelMarker = L.marker(colonia.center, {
+          icon: L.divIcon({
+            className: 'colonia-label-container',
+            html: `<div class="colonia-label">${colonia.name}</div>`,
+            iconSize: [100, 20],
+            iconAnchor: [50, 10]
+          })
+        }).addTo(map);
+
+        // Hover effect on colonia polygon
+        polygon.on('mouseover', function () {
+          this.setStyle({
+            fillOpacity: 0.18,
+            weight: 4.5
+          });
+        });
+        polygon.on('mouseout', function () {
+          this.setStyle({
+            fillOpacity: 0.07,
+            weight: 3.5
+          });
+        });
+      });
+
+      // --- 2. ADD PROPERTY PINS ---
+      properties.forEach(prop => {
+        const isNuevo = prop.status === 'nuevo';
+        const colorClass = isNuevo ? 'bg-emerald-600' : 'bg-amber-600';
+
+        // Custom HTML Marker Icon
+        const customIcon = L.divIcon({
+          className: 'custom-property-pin',
+          html: `
+            <div class="relative">
+              <div class="pulse-bg"></div>
+              <div class="marker-pin ${colorClass}">
+                <i class="fa-solid ${isNuevo ? 'fa-key' : 'fa-house'}"></i>
+              </div>
+            </div>
+          `,
+          iconSize: [32, 32],
+          iconAnchor: [16, 32],
+          popupAnchor: [0, -32]
+        });
+
+        const marker = L.marker(prop.coords, { icon: customIcon }).addTo(map);
+
+        // Build Popup Content
+        const popupContent = `
+          <div class="text-slate-800">
+            <div class="p-3 ${isNuevo ? 'bg-emerald-600' : 'bg-amber-600'} text-white">
+              <div class="flex justify-between items-center text-[10px] uppercase tracking-wider font-semibold opacity-90 mb-0.5">
+                <span>${prop.badge}</span>
+                <span class="bg-white/20 px-2 py-0.5 rounded-full">${prop.status}</span>
+              </div>
+              <h3 class="font-bold text-base leading-tight">${prop.title}</h3>
+            </div>
+            
+            <div class="p-3 bg-white space-y-2 text-xs">
+              <div class="text-lg font-black text-slate-900 leading-none">
+                ${formatMXN(prop.price)} <span class="text-xs font-normal text-slate-500">MXN</span>
+              </div>
+              
+              <div class="grid grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg text-slate-700 border border-slate-100">
+                <div>
+                  <span class="block text-[10px] text-slate-400 uppercase">Superficie</span>
+                  <span class="font-bold">${prop.area} m²</span>
+                </div>
+                <div>
+                  <span class="block text-[10px] text-slate-400 uppercase">Precio / m²</span>
+                  <span class="font-bold text-emerald-700">${formatMXN(prop.priceM2)}</span>
+                </div>
+              </div>
+
+              <div class="text-slate-600 flex items-start gap-1 text-[11px] pt-1">
+                <i class="fa-solid fa-location-dot text-red-500 mt-0.5 flex-shrink-0"></i>
+                <span class="line-clamp-2">${prop.address}</span>
+              </div>
+
+              <a href="${prop.url}" target="_blank" rel="noopener noreferrer" 
+                 class="mt-2 w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-center font-medium flex items-center justify-center gap-1.5 transition">
+                <span>Ver Publicación</span>
+                <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+              </a>
+            </div>
+          </div>
+        `;
+
+        marker.bindPopup(popupContent);
+        
+        // Save marker reference
+        markersMap[prop.id] = marker;
+
+        // Click marker trigger
+        marker.on('click', () => {
+          highlightCard(prop.id);
+        });
+      });
+    }
+
+    // Render list in sidebar
+    function renderSidebarList(items) {
+      const listContainer = document.getElementById('properties-list');
+      listContainer.innerHTML = '';
+
+      if(items.length === 0) {
+        listContainer.innerHTML = `<p class="text-center text-slate-400 py-8 text-sm">No se encontraron propiedades.</p>`;
+        return;
+      }
+
+      items.forEach(prop => {
+        const isNuevo = prop.status === 'nuevo';
+        const card = document.createElement('div');
+        card.id = `card-${prop.id}`;
+        card.className = `p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer relative overflow-hidden group`;
+
+        card.innerHTML = `
+          <div class="absolute top-0 left-0 w-1.5 h-full ${isNuevo ? 'bg-emerald-500' : 'bg-amber-500'}"></div>
+          
+          <div class="pl-2">
+            <div class="flex justify-between items-start mb-1">
+              <span class="text-[10px] font-bold uppercase tracking-wider ${isNuevo ? 'text-emerald-700 bg-emerald-50' : 'text-amber-700 bg-amber-50'} px-2 py-0.5 rounded-md border ${isNuevo ? 'border-emerald-200' : 'border-amber-200'}">
+                ${prop.status}
+              </span>
+              <span class="text-xs font-semibold text-slate-400">${prop.area} m²</span>
+            </div>
+
+            <h3 class="font-bold text-slate-900 text-sm group-hover:text-red-600 transition leading-tight mb-1">
+              ${prop.title}
+            </h3>
+
+            <p class="text-xs text-slate-500 line-clamp-1 mb-2 flex items-center gap-1">
+              <i class="fa-solid fa-location-dot text-red-500 text-[10px]"></i> ${prop.address}
+            </p>
+
+            <div class="flex justify-between items-baseline pt-2 border-t border-slate-100">
+              <div>
+                <span class="text-[10px] text-slate-400 block uppercase">Precio Total</span>
+                <span class="font-black text-slate-900 text-sm">${formatMXN(prop.price)}</span>
+              </div>
+              <div class="text-right">
+                <span class="text-[10px] text-slate-400 block uppercase">m²</span>
+                <span class="font-bold text-emerald-600 text-xs">${formatMXN(prop.priceM2)}/m²</span>
+              </div>
+            </div>
+          </div>
+        `;
+
+        card.addEventListener('click', () => {
+          focusProperty(prop.id);
+        });
+
+        listContainer.appendChild(card);
+      });
+    }
+
+    // Highlight property from sidebar click
+    function focusProperty(id) {
+      const prop = properties.find(p => p.id === id);
+      if(!prop) return;
+
+      // Center map & open popup
+      map.flyTo(prop.coords, 17, { duration: 1.2 });
+      markersMap[id].openPopup();
+
+      highlightCard(id);
+
+      // Mobile auto close sidebar when selected
+      if (window.innerWidth < 768) {
+        document.getElementById('sidebar').classList.add('hidden');
+      }
+    }
+
+    function highlightCard(id) {
+      document.querySelectorAll('#properties-list > div').forEach(c => {
+        c.classList.remove('ring-2', 'ring-red-500', 'bg-red-50/20');
+      });
+      const activeCard = document.getElementById(`card-${id}`);
+      if(activeCard) {
+        activeCard.classList.add('ring-2', 'ring-red-500', 'bg-red-50/20');
+        activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    // Filter Logic & Listeners
+    function setupEventListeners() {
+      // Toggle Filter buttons
+      const filterBtns = document.querySelectorAll('.filter-btn');
+      filterBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          filterBtns.forEach(b => {
+            b.classList.remove('bg-slate-900', 'text-white', 'active');
+            b.classList.add('bg-slate-200', 'text-slate-700');
+          });
+
+          e.target.classList.add('bg-slate-900', 'text-white', 'active');
+          e.target.classList.remove('bg-slate-200', 'text-slate-700');
+
+          const filter = e.target.getAttribute('data-filter');
+          applyFilter(filter);
+        });
+      });
+
+      // Mobile Sidebar Toggle
+      const toggleBtn = document.getElementById('toggle-sidebar-btn');
+      const closeBtn = document.getElementById('close-sidebar-btn');
+      const sidebar = document.getElementById('sidebar');
+
+      toggleBtn.addEventListener('click', () => {
+        sidebar.classList.toggle('hidden');
+      });
+      closeBtn.addEventListener('click', () => {
+        sidebar.classList.add('hidden');
+      });
+    }
+
+    function applyFilter(filter) {
+      currentFilter = filter;
+      const filtered = filter === 'all' 
+        ? properties 
+        : properties.filter(p => p.status === filter);
+
+      renderSidebarList(filtered);
+
+      // Show/Hide Markers on Map
+      properties.forEach(p => {
+        if(filter === 'all' || p.status === filter) {
+          markersMap[p.id].addTo(map);
+        } else {
+          map.removeLayer(markersMap[p.id]);
+        }
+      });
+    }
+  </script>
+</body>
+</html>
